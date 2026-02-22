@@ -1,16 +1,15 @@
-// Incarca variabilele din .env
 require("dotenv").config();
 
 const fs = require("fs");
-const puppeteer = require("puppeteer-core");
+const axios = require("axios");
+const cheerio = require("cheerio");
 const { Client, GatewayIntentBits } = require("discord.js");
 
-// Log verificare .env
+// Debug env
 console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "LIPSA");
 console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "LIPSA");
 console.log("X_USERNAME:", process.env.X_USERNAME ? "OK" : "LIPSA");
 
-// Client Discord
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -18,91 +17,69 @@ const client = new Client({
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const USERNAME = process.env.X_USERNAME;
 
-let browser;
-let page;
 let lastTweet = null;
 
-// Incarca ultimul tweet salvat
+// Load last tweet
 if (fs.existsSync("lastTweet.txt")) {
   lastTweet = fs.readFileSync("lastTweet.txt", "utf8");
 }
 
-// Cand botul e gata
-client.once("ready", async () => {
+client.once("ready", () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
 
-  // Pornim Puppeteer (headless pentru Render)
-  browser = await puppeteer.launch({
-  headless: "new",
-  args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium-browser",
-  defaultViewport: null
+  checkTweets();
+  setInterval(checkTweets, 15000); // 15 sec
 });
 
-  console.log("🌐 Browser pornit (headless)");
-
-  page = await browser.newPage();
-
-  // Prima verificare
-  await checkTweets();
-
-  // Verificare la 10 secunde
-  setInterval(checkTweets, 10000);
-});
-
-// Functie verificare tweet-uri
 async function checkTweets() {
   try {
     console.log("🔍 Verificare tweet-uri...");
 
-    await page.goto(`https://nitter.net/${USERNAME}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 0
+    const url = `https://nitter.net/${USERNAME}`;
+
+    const res = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      },
+      timeout: 20000
     });
 
-    // Asteapta incarcare continut
-    await new Promise(r => setTimeout(r, 4000));
+    const $ = cheerio.load(res.data);
 
-    const tweets = await page.$$eval(".timeline-item", items =>
-      items.map(item => {
-        const link = item.querySelector("a.tweet-link")?.href;
-        const text = item.innerText;
-        return { link, text };
-      })
-    );
+    const firstTweet = $(".timeline-item").first();
 
-    if (!tweets.length) {
-      console.log("⚠️ Nu s-au gasit tweet-uri");
+    if (!firstTweet.length) {
+      console.log("⚠️ Niciun tweet gasit");
       return;
     }
 
-    const latest = tweets[0];
+    const link = firstTweet.find("a.tweet-link").attr("href");
 
-    console.log("📌 Ultimul tweet:", latest.link);
+    if (!link) {
+      console.log("⚠️ Link lipsa");
+      return;
+    }
 
-    // Daca e nou
-    if (latest.link && latest.link !== lastTweet) {
+    const fullLink = `https://x.com${link}`;
+
+    console.log("📌 Ultimul tweet:", fullLink);
+
+    if (fullLink !== lastTweet) {
       console.log("🆕 Tweet nou!");
 
-      lastTweet = latest.link;
+      lastTweet = fullLink;
       fs.writeFileSync("lastTweet.txt", lastTweet);
-
-      // Extrage ID tweet
-      const tweetId = latest.link.split("/").pop();
-
-      // Link oficial X
-      const xLink = `https://x.com/${USERNAME}/status/${tweetId}`;
 
       const channel = await client.channels.fetch(CHANNEL_ID);
 
       await channel.send(
-        `🆕 **New X Post from ${USERNAME}!**\n${xLink}`
+        `🆕 **New X Post from ${USERNAME}!**\n${fullLink}`
       );
 
-      console.log("✅ Postat pe Discord:", xLink);
+      console.log("✅ Postat pe Discord");
 
     } else {
-      console.log("ℹ️ Nicio postare noua");
+      console.log("ℹ️ Nimic nou");
     }
 
   } catch (err) {
@@ -110,5 +87,4 @@ async function checkTweets() {
   }
 }
 
-// Login bot
 client.login(process.env.DISCORD_TOKEN);
