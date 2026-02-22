@@ -10,12 +10,22 @@ console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "LIPSA");
 console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "LIPSA");
 console.log("X_USERNAME:", process.env.X_USERNAME ? "OK" : "LIPSA");
 
+// Discord client
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const USERNAME = process.env.X_USERNAME;
+
+// Nitter mirrors
+const MIRRORS = [
+  "https://nitter.net",
+  "https://nitter.1d4.us",
+  "https://nitter.fdn.fr",
+  "https://nitter.cz",
+  "https://nitter.moomoo.me"
+];
 
 let lastTweet = null;
 
@@ -35,16 +45,33 @@ async function checkTweets() {
   try {
     console.log("🔍 Verificare tweet-uri...");
 
-    const url = `https://nitter.net/${USERNAME}`;
+    let html = null;
 
-    const res = await axios.get(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      },
-      timeout: 20000
-    });
+    // Try mirrors
+    for (const base of MIRRORS) {
+      try {
+        const res = await axios.get(`${base}/${USERNAME}`, {
+          headers: {
+            "User-Agent": "Mozilla/5.0"
+          },
+          timeout: 15000
+        });
 
-    const $ = cheerio.load(res.data);
+        html = res.data;
+        console.log(`✅ Mirror OK: ${base}`);
+        break;
+
+      } catch (err) {
+        console.log(`❌ Mirror picat: ${base}`);
+      }
+    }
+
+    if (!html) {
+      console.log("❌ Toate mirror-urile sunt indisponibile");
+      return;
+    }
+
+    const $ = cheerio.load(html);
 
     const firstTweet = $(".timeline-item").first();
 
@@ -64,6 +91,7 @@ async function checkTweets() {
 
     console.log("📌 Ultimul tweet:", fullLink);
 
+    // Check if new
     if (fullLink !== lastTweet) {
       console.log("🆕 Tweet nou!");
 
