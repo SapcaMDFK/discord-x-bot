@@ -10,7 +10,7 @@ console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "LIPSA");
 console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "LIPSA");
 console.log("X_USERNAME:", process.env.X_USERNAME ? "OK" : "LIPSA");
 
-// Discord client
+// Discord
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -21,10 +21,9 @@ const USERNAME = process.env.X_USERNAME;
 // Nitter mirrors
 const MIRRORS = [
   "https://nitter.net",
-  "https://nitter.1d4.us",
   "https://nitter.fdn.fr",
   "https://nitter.cz",
-  "https://nitter.moomoo.me"
+  "https://nitter.1d4.us"
 ];
 
 let lastTweet = null;
@@ -38,7 +37,7 @@ client.once("ready", () => {
   console.log(`✅ Bot online: ${client.user.tag}`);
 
   checkTweets();
-  setInterval(checkTweets, 15000); // 15 sec
+  setInterval(checkTweets, 20000); // 20 sec
 });
 
 async function checkTweets() {
@@ -46,44 +45,48 @@ async function checkTweets() {
     console.log("🔍 Verificare tweet-uri...");
 
     let html = null;
+    let usedMirror = null;
 
     // Try mirrors
     for (const base of MIRRORS) {
       try {
         const res = await axios.get(`${base}/${USERNAME}`, {
           headers: {
-            "User-Agent": "Mozilla/5.0"
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9"
           },
           timeout: 15000
         });
 
         html = res.data;
+        usedMirror = base;
         console.log(`✅ Mirror OK: ${base}`);
         break;
 
-      } catch (err) {
+      } catch {
         console.log(`❌ Mirror picat: ${base}`);
       }
     }
 
     if (!html) {
-      console.log("❌ Toate mirror-urile sunt indisponibile");
+      console.log("❌ Niciun mirror disponibil");
       return;
     }
 
     const $ = cheerio.load(html);
 
-    const firstTweet = $(".timeline-item").first();
+    // New selector for Nitter
+    const tweet = $("article.timeline-item").first();
 
-    if (!firstTweet.length) {
+    if (!tweet.length) {
       console.log("⚠️ Niciun tweet gasit");
       return;
     }
 
-    const link = firstTweet.find("a.tweet-link").attr("href");
+    const link = tweet.find("a[href*='/status/']").attr("href");
 
     if (!link) {
-      console.log("⚠️ Link lipsa");
+      console.log("⚠️ Link tweet lipsa");
       return;
     }
 
@@ -91,9 +94,9 @@ async function checkTweets() {
 
     console.log("📌 Ultimul tweet:", fullLink);
 
-    // Check if new
+    // New tweet
     if (fullLink !== lastTweet) {
-      console.log("🆕 Tweet nou!");
+      console.log("🆕 Tweet nou detectat!");
 
       lastTweet = fullLink;
       fs.writeFileSync("lastTweet.txt", lastTweet);
@@ -101,10 +104,10 @@ async function checkTweets() {
       const channel = await client.channels.fetch(CHANNEL_ID);
 
       await channel.send(
-        `🆕 **New X Post from ${USERNAME}!**\n${fullLink}`
+        `🆕 **New post from ${USERNAME}**\n${fullLink}`
       );
 
-      console.log("✅ Postat pe Discord");
+      console.log("✅ Trimite pe Discord");
 
     } else {
       console.log("ℹ️ Nimic nou");
