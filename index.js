@@ -2,7 +2,7 @@
 require("dotenv").config();
 
 const fs = require("fs");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 const { Client, GatewayIntentBits } = require("discord.js");
 
 // Log verificare .env
@@ -33,10 +33,11 @@ client.once("ready", async () => {
 
   // Pornim Puppeteer (headless pentru Render)
   browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    defaultViewport: null
-  });
+  headless: "new",
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium-browser",
+  defaultViewport: null
+});
 
   console.log("🌐 Browser pornit (headless)");
 
